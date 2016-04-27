@@ -42,8 +42,7 @@ for my $dir (@ARGV) {
       my $infile = file($_);
       my $outfile = file( $O{output}, $infile->relative($dir) );
 
-      return if -e "$outfile" && -M "$outfile" <= -M "$infile";
-
+      return if -f "$outfile" && -M "$infile" <= -M "$outfile";
       say "$infile -> $outfile";
 
       $outfile->parent->mkpath;
@@ -65,7 +64,7 @@ for my $dir (@ARGV) {
 sub process_mp3 {
   my ( $infile, $outfile ) = @_;
 
-  ( my $oggfile = $outfile ) =~ s/\.mp4$/.ogg/;
+  ( my $oggfile = $outfile ) =~ s/\.mp3$/.ogg/;
   ffmpeg( ["-vn", "-c:a", "libvorbis", "-b:a", "192k",],
     "$infile", "$oggfile" );
 
