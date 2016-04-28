@@ -64,8 +64,10 @@ for my $dir (@ARGV) {
 
 sub link_file {
   my ( $from, $to ) = @_;
-  eval { unlink "$to" };
-  link "$from", "$to";
+  my $tmp = "$to.tmp";
+  eval { unlink "$tmp" };
+  link "$from", "$tmp";
+  rename "$tmp", "$to";
 }
 
 sub process_mp3 {
