@@ -115,14 +115,17 @@ sub process_props {
     $found{$base}{$ext} = "$obj";
   }
 
+  my %by_kind = ();
   for my $id ( sort keys %found ) {
     my $obj  = $found{$id};
     my $kind = asset_kind($obj);
-    my $rec  = {
+    $by_kind{$kind}++;
+    my $rec = {
       _id    => mongo_id(),
       id     => $id,
       theme  => $theme,
       decade => $props->{decade} };
+
     while ( my ( $ext, $file ) = each %$obj ) {
       my $key = $ext2key{$ext} // die;
       my $url = join '/', $O{prefix}, $kind, "$id.$ext";
@@ -134,6 +137,8 @@ sub process_props {
     }
     push @{ $stash->{$kind} }, $rec;
   }
+
+  say '  ', join ', ', map { "$_ = $by_kind{$_}" } sort keys %by_kind;
 }
 
 sub asset_kind {
