@@ -88,7 +88,10 @@ sub process_props {
   );
 
   my $props = read_props($propfile);
-  $stash->{theme}{ $props->{theme} }++;
+
+  # Bodge: app doesn't escape ampersand.
+  ( my $theme = $props->{theme} ) =~ s/ & / and /g;
+  $stash->{theme}{$theme}++;
 
   my @obj = file($propfile)->parent->children;
 
@@ -106,7 +109,7 @@ sub process_props {
     my $rec  = {
       _id    => mongo_id(),
       id     => $id,
-      theme  => $props->{theme},
+      theme  => $theme,
       decade => $props->{decade} };
     while ( my ( $ext, $file ) = each %$obj ) {
       my $key = $ext2key{$ext} // die;
