@@ -46,7 +46,16 @@ for my $dir (@ARGV) {
   }, $dir;
 }
 
-{
+fix_themes($stash);
+
+while ( my ( $col, $recs ) = each %$stash ) {
+  my $dbfile = file $O{database}, "$col.json";
+  say "Writing $dbfile";
+  save_mongo( $dbfile, $recs );
+}
+
+sub fix_themes {
+  my ($stash) = @_;
   my @themes;
   my @names = map { $_ // 'Unused' }
    ( sort keys %{ delete $stash->{theme} } )[0 .. THEMES - 1];
@@ -58,12 +67,7 @@ for my $dir (@ARGV) {
      };
   }
   $stash->{theme} = \@themes;
-}
-
-while ( my ( $col, $recs ) = each %$stash ) {
-  my $dbfile = file $O{database}, "$col.json";
-  say "Writing $dbfile";
-  save_mongo( $dbfile, $recs );
+  return $stash;
 }
 
 sub save_mongo {
