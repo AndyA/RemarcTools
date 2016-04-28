@@ -163,10 +163,8 @@ sub mongo_uuid {
 
 sub link_file {
   my ( $from, $to ) = @_;
-  my $tmp = "$to.tmp";
-  eval { unlink "$tmp" };
-  link "$from", "$tmp";
-  rename "$tmp", "$to";
+  eval { unlink "$to" };
+  link "$from", "$to";
 }
 
 # vim:ts=2:sw=2:sts=2:et:ft=perl
