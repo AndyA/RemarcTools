@@ -55,11 +55,17 @@ for my $dir (@ARGV) {
         process_mp4( $infile, $outfile );
       }
       else {
-        link "$infile", "$outfile";
+        link_file( "$infile", "$outfile" );
       }
     },
     no_chdir => 1
   }, $dir;
+}
+
+sub link_file {
+  my ( $from, $to ) = @_;
+  eval { unlink "$to" };
+  link "$from", "$to";
 }
 
 sub process_mp3 {
@@ -69,7 +75,7 @@ sub process_mp3 {
   ffmpeg( ["-vn", "-c:a", "libvorbis", "-b:a", "192k",],
     "$infile", "$oggfile" );
 
-  link "$infile", "$outfile";
+  link_file( "$infile", "$outfile" );
 }
 
 sub process_mp4 {
@@ -123,9 +129,8 @@ sub process_mp4 {
     $rate = $maxrate;
   }
   else {
-    link "$infile", "$outfile";
+    link_file( "$infile", "$outfile" );
   }
-
 }
 
 sub ffmpeg {
@@ -142,7 +147,9 @@ sub ffmpeg {
   );
 
   say join " ", @cmd;
+
   system @cmd and die $?;
+
   rename "$tmpfile", "$outfile";
 }
 
