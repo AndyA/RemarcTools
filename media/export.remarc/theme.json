@@ -5,6 +5,6 @@
 {"_id":{"$oid":"d183cd10f84dbcdb8ce47551"},"name":"Music"}
 {"_id":{"$oid":"4df8c0928dbdc838219c578f"},"name":"People"}
 {"_id":{"$oid":"63524ff64282ec17a8167a65"},"name":"Sport"}
-{"_id":{"$oid":"16a51f7e35d3c4babe228ab5"},"name":"TV & Radio"}
+{"_id":{"$oid":"16a51f7e35d3c4babe228ab5"},"name":"TV and Radio"}
 {"_id":{"$oid":"16a51f7af48a9b2459128e35"},"name":"Unused 1"}
 {"_id":{"$oid":"163524ff66a51d57dc11f7e3"},"name":"Unused 2"}
