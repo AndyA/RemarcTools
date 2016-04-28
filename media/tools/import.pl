@@ -11,6 +11,8 @@ use Getopt::Long;
 use JSON;
 use Path::Class;
 
+use constant THEMES => 10;
+
 use constant USAGE => <<EOT;
 Syntax: $0 [options] <dir> ...
 
@@ -46,7 +48,10 @@ for my $dir (@ARGV) {
 
 {
   my @themes;
-  for my $theme ( sort keys %{ delete $stash->{theme} } ) {
+  my @names = map { $_ // 'Unused' }
+   ( sort keys %{ delete $stash->{theme} } )[0 .. THEMES - 1];
+
+  for my $theme (@names) {
     push @themes,
      {_id  => mongo_id(),
       name => $theme
