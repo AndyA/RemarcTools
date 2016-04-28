@@ -40,9 +40,10 @@ for my $dir (@ARGV) {
     wanted => sub {
       return unless -f;
       my $infile = file($_);
+      return if $infile->basename =~ /^\./;
       my $outfile = file( $O{output}, $infile->relative($dir) );
 
-      return if -f "$outfile" && -M "$infile" <= -M "$outfile";
+      return if -f "$outfile" && -M "$infile" >= -M "$outfile";
       say "$infile -> $outfile";
 
       $outfile->parent->mkpath;
@@ -75,7 +76,7 @@ sub process_mp4 {
   my ( $infile, $outfile ) = @_;
   my $info = mediainfo($infile);
 
-  my $vid = '//Mediainfo/File/track[@type="Video"]/';
+  my $vid = '//Mediainfo/File/track[@type="Video"]';
 
   my $bitrate  = mi_num( $info, "$vid/Bit_rate" );
   my $width    = mi_num( $info, "$vid/Width" );
