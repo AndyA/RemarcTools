@@ -20,18 +20,21 @@ Options:
     -h, --help          See this message
     -o, --output=dir    Output media to <dir>
     -d, --database=dir  Output db dump to <dir>
+    -p, --prefix=url    URL prefix for resources
 EOT
 
 my %O = (
   help     => undef,
   output   => 'datacontent',
   database => 'db',
+  prefix   => '/remarc_resources/content',
 );
 
 GetOptions(
   'h|help'       => \$O{help},
   'o|output:s'   => \$O{output},
-  'd|database:s' => \$O{database}
+  'd|database:s' => \$O{database},
+  'p|prefix:s'   => \$O{prefix},
 ) or die USAGE;
 
 my $stash = {};
@@ -122,7 +125,7 @@ sub process_props {
       decade => $props->{decade} };
     while ( my ( $ext, $file ) = each %$obj ) {
       my $key = $ext2key{$ext} // die;
-      my $url = join '/', '', 'remarc_resources', 'content', $kind, "$id.$ext";
+      my $url = join '/', $O{prefix}, $kind, "$id.$ext";
       $rec->{$key} = $url;
       my $dst = file $O{output}, $kind, "$id.$ext";
       $dst->parent->mkpath;
