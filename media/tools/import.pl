@@ -127,11 +127,7 @@ sub process_props {
       my $dst = file $O{output}, $kind, "$id.$ext";
       $dst->parent->mkpath;
 
-      {
-        no autodie;
-        unlink "$dst";
-      }
-      link "$file", "$dst";
+      link_file( $file, $dst );
     }
     push @{ $stash->{$kind} }, $rec;
   }
@@ -163,6 +159,14 @@ sub mongo_uuid {
   my @part = ();
   push @part, sprintf '%04x', int( rand() * 0x10000 ) for 1 .. 6;
   return join '', @part;
+}
+
+sub link_file {
+  my ( $from, $to ) = @_;
+  my $tmp = "$to.tmp";
+  eval { unlink "$tmp" };
+  link "$from", "$tmp";
+  rename "$tmp", "$to";
 }
 
 # vim:ts=2:sw=2:sts=2:et:ft=perl
