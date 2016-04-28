@@ -13,6 +13,7 @@ use XML::LibXML::XPathContext;
 use XML::LibXML;
 
 use constant POSTER_OFFSET => 150;
+use constant IMAGE_MAX     => '1920x1080>';
 
 use constant USAGE => <<EOT;
 Syntax: $0 [options] <dir> ...
@@ -54,8 +55,11 @@ for my $dir (@ARGV) {
       elsif ( $infile =~ /\.mp4$/ ) {
         process_mp4( $infile, $outfile );
       }
+      elsif ( $infile =~ /\.jpg$/ ) {
+        process_jpg( $infile, $outfile );
+      }
       else {
-        link_file( "$infile", "$outfile" );
+        link_file( $infile, $outfile );
       }
     },
     no_chdir => 1
@@ -68,6 +72,11 @@ sub link_file {
   eval { unlink "$tmp" };
   link "$from", "$tmp";
   rename "$tmp", "$to";
+}
+
+sub process_jpg {
+  my ( $infile, $outfile ) = @_;
+  run_cmd( 'convert', $infile, '-resize', IMAGE_MAX, $outfile );
 }
 
 sub process_mp3 {
