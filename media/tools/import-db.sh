@@ -2,7 +2,6 @@
 
 db=remarc
 dir="export.$db"
-mkdir -p "$dir"
 for col in audio images theme video; do
   mongoimport -d "$db" -c "$col" --drop --file "$dir/$col.json"
 done
