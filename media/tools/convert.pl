@@ -14,8 +14,9 @@ use Scalar::Util qw( looks_like_number );
 use XML::LibXML::XPathContext;
 use XML::LibXML;
 
-use constant POSTER_OFFSET => 150;
-use constant IMAGE_MAX     => '1920x1080>';
+use constant POSTER_OFFSET    => 150;
+use constant IMAGE_MAX_WIDTH  => 1920;
+use constant IMAGE_MAX_HEIGHT => 1080;
 
 use constant USAGE => <<EOT;
 Syntax: $0 [options] <dir> ...
@@ -83,7 +84,27 @@ sub link_file {
 
 sub process_jpg {
   my ( $infile, $outfile, $watermark ) = @_;
-  run_cmd( 'convert', $infile, '-resize', IMAGE_MAX, $outfile );
+  my $info = mediainfo($infile);
+
+  my $img = '//Mediainfo/File/track[@type="Image"]';
+
+  my $width  = mi_num( $info, "$img/Width" );
+  my $height = mi_num( $info, "$img/Height" );
+
+  my ( $ow, $oh )
+   = scale_size( $width, $height, IMAGE_MAX_WIDTH, IMAGE_MAX_HEIGHT );
+
+  my @wm = watermark( $watermark, $ow, $oh );
+
+  if (@wm) {
+    ffmpeg( [@wm], "$infile", "$outfile" );
+  }
+  elsif ( $ow < $width || $oh < $height ) {
+    ffmpeg( [-vf => "scale=w=$ow:h=$oh"], "$infile", "$outfile" );
+  }
+  else {
+    link_file( "$infile", "$outfile" );
+  }
 }
 
 sub process_mp3 {
@@ -109,12 +130,7 @@ sub process_mp4 {
   my $dar      = mi_num( $info, "$vid/Display_aspect_ratio" );
   my $par      = mi_num( $info, "$vid/Pixel_aspect_ratio" );
 
-  my @wm = watermark(
-    $watermark,
-    round( $width / 20 ),
-    round( $height / 20 ),
-    round( $width / 10 ), -1
-  );
+  my @wm = watermark( $watermark, $width, $height );
 
   {
     # poster frame
@@ -169,22 +185,36 @@ sub process_mp4 {
   }
 }
 
+sub scale_size {
+  my ( $w, $h, $max_w, $max_h ) = @_;
+  my $scale = min( 1, $max_w / $w, $max_h / $h );
+  return ( round( $w * $scale ), round( $h * $scale ) );
+}
+
 sub round {
   my $x = shift;
+  return undef unless defined $x;
   return -round( -$x ) if $x < 0;
   return int( $x + 0.5 );
 }
 
 sub watermark {
-  my ( $img, $x, $y, $width, $height ) = @_;
+  my ( $img, $w, $h ) = @_;
+  my $pad = round( min( $w, $h ) / 20 );
+  return overlay( $img, $pad, $pad, $pad * 2, -1, round($w), round($h) );
+}
+
+sub overlay {
+  my ( $img, $x, $y, $ww, $wh, $sw, $sh ) = @_;
 
   return unless defined $img;
 
   return (
     -i              => $img,
     -filter_complex => join( ", ",
-      "[1:v]scale=w=$width:h=$height [ovrl]",
-      "[0:v][ovrl]overlay=x=$x:y=$y" )
+      ( defined $sw ? "[0:v]scale=w=$sw:h=$sh [src]" : "[0:v]null [src]" ),
+      "[1:v]scale=w=$ww:h=$wh [ovrl]",
+      "[src][ovrl]overlay=x=$x:y=$y" )
   );
 }
 
