@@ -21,17 +21,22 @@ use constant USAGE => <<EOT;
 Syntax: $0 [options] <dir> ...
 
 Options:
-    -h, --help        See this message
-    -o, --output=dir  Output files to <dir>
+    -h, --help          See this message
+    -o, --output=dir    Output files to <dir>
+    -w, --watermark=img Watermark with image
 EOT
 
 my %O = (
-  help   => undef,
-  output => 'output',
+  help      => undef,
+  output    => 'output',
+  watermark => undef,
 );
 
-GetOptions( 'h|help' => \$O{help}, 'o|output:s' => \$O{output}, )
- or die USAGE;
+GetOptions(
+  'h|help'        => \$O{help},
+  'o|output:s'    => \$O{output},
+  'w|watermark:s' => \$O{watermark},
+) or die USAGE;
 
 if ( $O{help} ) {
   say USAGE;
@@ -55,10 +60,10 @@ for my $dir (@ARGV) {
         process_mp3( $infile, $outfile );
       }
       elsif ( $infile =~ /\.mp4$/ ) {
-        process_mp4( $infile, $outfile );
+        process_mp4( $infile, $outfile, $O{watermark} );
       }
       elsif ( $infile =~ /\.jpg$/ ) {
-        process_jpg( $infile, $outfile );
+        process_jpg( $infile, $outfile, $O{watermark} );
       }
       else {
         link_file( $infile, $outfile );
@@ -77,7 +82,7 @@ sub link_file {
 }
 
 sub process_jpg {
-  my ( $infile, $outfile ) = @_;
+  my ( $infile, $outfile, $watermark ) = @_;
   run_cmd( 'convert', $infile, '-resize', IMAGE_MAX, $outfile );
 }
 
@@ -92,7 +97,7 @@ sub process_mp3 {
 }
 
 sub process_mp4 {
-  my ( $infile, $outfile ) = @_;
+  my ( $infile, $outfile, $watermark ) = @_;
   my $info = mediainfo($infile);
 
   my $vid = '//Mediainfo/File/track[@type="Video"]';
@@ -104,49 +109,82 @@ sub process_mp4 {
   my $dar      = mi_num( $info, "$vid/Display_aspect_ratio" );
   my $par      = mi_num( $info, "$vid/Pixel_aspect_ratio" );
 
-  my $maxrate = max_bit_rate( $width, $height );
-
-  # poster frame
-  my $postertime = min( POSTER_OFFSET, int( $duration / 2000 ) );
-  ( my $posterfile = $outfile ) =~ s/\.mp4$/.jpg/;
-
-  ffmpeg(
-    [ -ss      => $postertime,
-      -vframes => 1,
-    ],
-    $infile,
-    $posterfile
+  my @wm = watermark(
+    $watermark,
+    round( $width / 20 ),
+    round( $height / 20 ),
+    round( $width / 10 ), -1
   );
 
-  my $rate = $bitrate;
+  {
+    # poster frame
+    my $postertime = min( POSTER_OFFSET, int( $duration / 2000 ) );
+    ( my $posterfile = $outfile ) =~ s/\.mp4$/.jpg/;
 
-  # h264
-  if ( $bitrate > $maxrate * 1.2 ) {
-    $rate = $maxrate;
     ffmpeg(
-      [ -async => 1,
-        -vsync => 0,
-        "-c:a", "aac",     "-b:a", "192k",
-        "-c:v", "libx264", "-b:v", $rate
+      [ @wm,
+        -ss      => $postertime,
+        -vframes => 1,
+
       ],
-      "$infile",
-      "$outfile"
+      $infile,
+      $posterfile
     );
   }
-  else {
-    link_file( "$infile", "$outfile" );
-  }
 
-  # theora
-  ( my $ogvfile = $outfile ) =~ s/\.mp4$/.ogv/;
-  ffmpeg(
-    [ -async => 1,
-      -vsync => 0,
-      "-c:a", "libvorbis", "-b:a", "192k",
-      "-c:v", "libtheora", "-b:v", int( $rate * 1.5 )
-    ],
-    "$infile",
-    "$ogvfile"
+  {
+    my $maxrate = max_bit_rate( $width, $height );
+    my $rate = $bitrate;
+
+    # h264
+    if ( $bitrate > $maxrate * 1.2 || @wm ) {
+      $rate = $maxrate;
+      ffmpeg(
+        [ @wm,
+          -async => 1,
+          -vsync => 0,
+          "-c:a", "aac",     "-b:a", "192k",
+          "-c:v", "libx264", "-b:v", $rate
+        ],
+        "$infile",
+        "$outfile"
+      );
+    }
+    else {
+      link_file( "$infile", "$outfile" );
+    }
+
+    # theora
+    ( my $ogvfile = $outfile ) =~ s/\.mp4$/.ogv/;
+    ffmpeg(
+      [ @wm,
+        -async => 1,
+        -vsync => 0,
+        "-c:a", "libvorbis", "-b:a", "192k",
+        "-c:v", "libtheora", "-b:v", int( $rate * 1.5 )
+      ],
+      "$infile",
+      "$ogvfile"
+    );
+  }
+}
+
+sub round {
+  my $x = shift;
+  return -round( -$x ) if $x < 0;
+  return int( $x + 0.5 );
+}
+
+sub watermark {
+  my ( $img, $x, $y, $width, $height ) = @_;
+
+  return unless defined $img;
+
+  return (
+    -i              => $img,
+    -filter_complex => join( ", ",
+      "[1:v]scale=w=$width:h=$height [ovrl]",
+      "[0:v][ovrl]overlay=x=$x:y=$y" )
   );
 }
 
