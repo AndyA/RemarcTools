@@ -8,7 +8,9 @@ use warnings;
 
 use File::Find;
 use Getopt::Long;
+use List::Util qw( min max );
 use Path::Class;
+use Scalar::Util qw( looks_like_number );
 use XML::LibXML::XPathContext;
 use XML::LibXML;
 
@@ -99,14 +101,15 @@ sub process_mp4 {
   my $width    = mi_num( $info, "$vid/Width" );
   my $height   = mi_num( $info, "$vid/Height" );
   my $duration = mi_num( $info, "$vid/Duration" );
+  my $dar      = mi_num( $info, "$vid/Display_aspect_ratio" );
+  my $par      = mi_num( $info, "$vid/Pixel_aspect_ratio" );
 
-  my $rate = $bitrate;
   my $maxrate = max_bit_rate( $width, $height );
 
   # poster frame
-  my $postertime = int( $duration / 2000 );
-  $postertime = POSTER_OFFSET if $postertime > POSTER_OFFSET;
+  my $postertime = min( POSTER_OFFSET, int( $duration / 2000 ) );
   ( my $posterfile = $outfile ) =~ s/\.mp4$/.jpg/;
+
   ffmpeg(
     [ -ss      => $postertime,
       -vframes => 1,
@@ -115,33 +118,36 @@ sub process_mp4 {
     $posterfile
   );
 
+  my $rate = $bitrate;
+
+  # h264
+  if ( $bitrate > $maxrate * 1.2 ) {
+    $rate = $maxrate;
+    ffmpeg(
+      [ -async => 1,
+        -vsync => 0,
+        "-c:a", "aac",     "-b:a", "192k",
+        "-c:v", "libx264", "-b:v", $rate
+      ],
+      "$infile",
+      "$outfile"
+    );
+  }
+  else {
+    link_file( "$infile", "$outfile" );
+  }
+
   # theora
   ( my $ogvfile = $outfile ) =~ s/\.mp4$/.ogv/;
   ffmpeg(
     [ -async => 1,
       -vsync => 0,
       "-c:a", "libvorbis", "-b:a", "192k",
-      "-c:v", "libtheora", "-b:v", int( $maxrate * 1.5 )
+      "-c:v", "libtheora", "-b:v", int( $rate * 1.5 )
     ],
     "$infile",
     "$ogvfile"
   );
-
-  # h264
-  if ( $bitrate > $maxrate * 1.2 ) {
-    ffmpeg(
-      [ -async => 1,
-        -vsync => 0,
-        "-c:a", "aac", "-b:a", "192k", "-c:v", "libx264", "-b:v", $maxrate
-      ],
-      "$infile",
-      "$outfile"
-    );
-    $rate = $maxrate;
-  }
-  else {
-    link_file( "$infile", "$outfile" );
-  }
 }
 
 sub ffmpeg {
@@ -175,7 +181,7 @@ sub mi_num {
   my ( $doc, $path ) = @_;
   for my $nd ( $doc->findnodes($path) ) {
     my $val = $nd->textContent;
-    return $1 if $val =~ /^\s*(\d+)\s*$/;
+    return $val if looks_like_number($val);
   }
   return;
 }
@@ -194,4 +200,3 @@ sub run_cmd {
 }
 
 # vim:ts=2:sw=2:sts=2:et:ft=perl
-
