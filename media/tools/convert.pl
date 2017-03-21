@@ -52,11 +52,6 @@ for my $dir (@ARGV) {
       return if $infile->basename =~ /^\./;
       my $outfile = file( $O{output}, $infile->relative($dir) );
 
-      return if -f "$outfile" && -M "$infile" >= -M "$outfile";
-      say "$infile -> $outfile";
-
-      $outfile->parent->mkpath;
-
       if ( $infile =~ /\.mp3$/ ) {
         process_mp3( $infile, $outfile );
       }
@@ -74,6 +69,19 @@ for my $dir (@ARGV) {
   }, $dir;
 }
 
+sub fresh {
+  my ( $src, $dst ) = @_;
+  return -f "$dst" && -M "$src" >= -M "$dst";
+}
+
+sub stale {
+  my ( $src, $dst ) = @_;
+  return if fresh( $src, $dst );
+  say "$src -> $dst";
+  file($dst)->parent->mkpath;
+  return 1;
+}
+
 sub link_file {
   my ( $from, $to ) = @_;
   my $tmp = "$to.tmp";
@@ -84,6 +92,9 @@ sub link_file {
 
 sub process_jpg {
   my ( $infile, $outfile, $watermark ) = @_;
+
+  return unless stale( $infile, $outfile );
+
   my $info = mediainfo($infile);
 
   my $img = '//Mediainfo/File/track[@type="Image"]';
@@ -111,14 +122,26 @@ sub process_mp3 {
   my ( $infile, $outfile ) = @_;
 
   ( my $oggfile = $outfile ) =~ s/\.mp3$/.ogg/;
-  ffmpeg( ["-vn", "-c:a", "libvorbis", "-b:a", "192k",],
-    "$infile", "$oggfile" );
+  if ( stale( $infile, $oggfile ) ) {
+    ffmpeg( ["-vn", "-c:a", "libvorbis", "-b:a", "192k",],
+      "$infile", "$oggfile" );
+  }
 
-  link_file( "$infile", "$outfile" );
+  link_file( "$infile", "$outfile" )
+   if stale( $infile, $outfile );
 }
 
 sub process_mp4 {
   my ( $infile, $outfile, $watermark ) = @_;
+
+  ( my $posterfile = $outfile ) =~ s/\.mp4$/.jpg/;
+  ( my $ogvfile    = $outfile ) =~ s/\.mp4$/.ogv/;
+
+  return
+      if fresh( $infile, $outfile )
+   && fresh( $infile, $posterfile )
+   && fresh( $infile, $ogvfile );
+
   my $info = mediainfo($infile);
 
   my $vid = '//Mediainfo/File/track[@type="Video"]';
@@ -134,54 +157,57 @@ sub process_mp4 {
 
   {
     # poster frame
-    my $postertime = min( POSTER_OFFSET, int( $duration / 2000 ) );
-    ( my $posterfile = $outfile ) =~ s/\.mp4$/.jpg/;
+    if ( stale( $infile, $posterfile ) ) {
+      my $postertime = min( POSTER_OFFSET, int( $duration / 2000 ) );
 
-    ffmpeg(
-      [ @wm,
-        -ss      => $postertime,
-        -vframes => 1,
+      ffmpeg(
+        [ @wm,
+          -ss      => $postertime,
+          -vframes => 1,
 
-      ],
-      $infile,
-      $posterfile
-    );
+        ],
+        $infile,
+        $posterfile
+      );
+    }
   }
 
   {
     my $maxrate = max_bit_rate( $width, $height );
-    my $rate = $bitrate;
+    my $rate = min( $bitrate, $maxrate );
 
-    # h264
-    if ( $bitrate > $maxrate * 1.2 || @wm ) {
-      $rate = $maxrate;
+    if ( stale( $infile, $outfile ) ) {
+      # h264
+      if ( $bitrate > $maxrate * 1.2 || @wm ) {
+        ffmpeg(
+          [ @wm,
+            -async => 1,
+            -vsync => 0,
+            "-c:a", "aac",     "-b:a", "192k",
+            "-c:v", "libx264", "-b:v", $rate
+          ],
+          "$infile",
+          "$outfile"
+        );
+      }
+      else {
+        link_file( "$infile", "$outfile" );
+      }
+    }
+
+    # theora
+    if ( stale( $infile, $ogvfile ) ) {
       ffmpeg(
         [ @wm,
           -async => 1,
           -vsync => 0,
-          "-c:a", "aac",     "-b:a", "192k",
-          "-c:v", "libx264", "-b:v", $rate
+          "-c:a", "libvorbis", "-b:a", "192k",
+          "-c:v", "libtheora", "-b:v", int( $rate * 1.5 )
         ],
         "$infile",
-        "$outfile"
+        "$ogvfile"
       );
     }
-    else {
-      link_file( "$infile", "$outfile" );
-    }
-
-    # theora
-    ( my $ogvfile = $outfile ) =~ s/\.mp4$/.ogv/;
-    ffmpeg(
-      [ @wm,
-        -async => 1,
-        -vsync => 0,
-        "-c:a", "libvorbis", "-b:a", "192k",
-        "-c:v", "libtheora", "-b:v", int( $rate * 1.5 )
-      ],
-      "$infile",
-      "$ogvfile"
-    );
   }
 }
 
