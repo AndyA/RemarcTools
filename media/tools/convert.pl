@@ -95,12 +95,12 @@ sub process_jpg {
 
   return unless stale( $infile, $outfile );
 
-  my $info = mediainfo($infile);
+  my ( $info, $xc ) = mediainfo($infile);
 
-  my $img = '//Mediainfo/File/track[@type="Image"]';
+  my $img = '//mi:MediaInfo/mi:media/mi:track[@type="Image"]';
 
-  my $width  = mi_num( $info, "$img/Width" );
-  my $height = mi_num( $info, "$img/Height" );
+  my $width  = mi_num( $xc, "$img/mi:Width" );
+  my $height = mi_num( $xc, "$img/mi:Height" );
 
   my ( $ow, $oh )
    = scale_size( $width, $height, IMAGE_MAX_WIDTH, IMAGE_MAX_HEIGHT );
@@ -142,14 +142,14 @@ sub process_mp4 {
    && fresh( $infile, $posterfile )
    && fresh( $infile, $ogvfile );
 
-  my $info = mediainfo($infile);
+  my ( $info, $xc ) = mediainfo($infile);
 
-  my $vid = '//Mediainfo/File/track[@type="Video"]';
+  my $vid = '//mi:MediaInfo/mi:media/mi:track[@type="Video"]';
 
-  my $bitrate  = mi_num( $info, "$vid/Bit_rate" );
-  my $width    = mi_num( $info, "$vid/Width" );
-  my $height   = mi_num( $info, "$vid/Height" );
-  my $duration = mi_num( $info, "$vid/Duration" );
+  my $bitrate  = mi_num( $xc, "$vid/mi:BitRate" );
+  my $width    = mi_num( $xc, "$vid/mi:Width" );
+  my $height   = mi_num( $xc, "$vid/mi:Height" );
+  my $duration = mi_num( $xc, "$vid/mi:Duration" );
 
   my @wm = watermark( $watermark, $width, $height );
 
@@ -255,7 +255,7 @@ sub ffmpeg {
     @$extra, -y => $tmpfile
   );
 
-  say join " ", @cmd;
+  say ">>>>> ", join " ", @cmd;
 
   system @cmd and die $?;
 
@@ -275,13 +275,17 @@ sub mi_num {
     my $val = $nd->textContent;
     return $val if looks_like_number($val);
   }
+  warn "Can't find $path in document\n";
   return;
 }
 
 sub mediainfo {
   my $file = shift;
-  my $xml = run_cmd( 'mediainfo', '--Full', '--Output=XML', $file );
-  return XML::LibXML->load_xml( string => $xml );
+  my $xml  = run_cmd( 'mediainfo', '--Full', '--Output=XML', $file );
+  my $doc  = XML::LibXML->load_xml( string => $xml );
+  my $xc   = XML::LibXML::XPathContext->new($doc);
+  $xc->registerNs( 'mi', 'https://mediaarea.net/mediainfo' );
+  return ( $doc, $xc );
 }
 
 sub run_cmd {
