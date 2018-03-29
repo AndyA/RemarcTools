@@ -6,7 +6,6 @@ use autodie;
 use strict;
 use warnings;
 
-use File::Find;
 use Getopt::Long;
 use JSON;
 use Path::Class;
@@ -39,14 +38,7 @@ GetOptions(
 
 my $stash = {};
 for my $dir (@ARGV) {
-  find {
-    wanted => sub {
-      return unless -f;
-      return unless /\.properties$/;
-      process_props( $stash, $_ );
-    },
-    no_chdir => 1
-  }, $dir;
+  process_dir( $stash, $dir );
 }
 
 fix_themes($stash);
@@ -84,10 +76,10 @@ sub save_mongo {
   }
 }
 
-sub process_props {
-  my ( $stash, $propfile ) = @_;
+sub process_dir {
+  my ( $stash, $dir ) = @_;
 
-  say "Processing $propfile";
+  say "Processing $dir";
 
   my %is_media = map { $_ => 1 } qw( jpg jpeg mp3 mp4 ogg ogv );
   my %ext2key = (
@@ -99,19 +91,17 @@ sub process_props {
     ogv  => 'ogvContentUrl',
   );
 
-  my $props = read_props($propfile);
-
-  # Bodge: app doesn't escape ampersand.
-  ( my $theme = $props->{theme} ) =~ s/ & / and /g;
-  $stash->{theme}{$theme}++;
-
-  my @obj = file($propfile)->parent->children;
+  my @obj = dir($dir)->children;
 
   my %found = ();
   for my $obj (@obj) {
-    next unless $obj->basename =~ /^(.+?)\.(.+)$/;
-    my ( $base, $ext ) = ( $1, $2 );
-    next unless $is_media{$ext};
+    if ( $obj->is_dir ) {
+      process_dir( $stash, $obj );
+      next;
+    }
+
+    my ( $base, $ext ) = split /\./, $obj->basename, 2;
+    next unless defined $ext && $is_media{$ext};
     $found{$base}{$ext} = "$obj";
   }
 
@@ -120,11 +110,18 @@ sub process_props {
     my $obj  = $found{$id};
     my $kind = asset_kind($obj);
     $by_kind{$kind}++;
+    my ( $year, $theme ) = parse_id($id);
+    my $decade = 10 * int( $year / 10 );
+    # Bodge: app doesn't escape ampersand.
+    $theme =~ s/ & / and /g;
+    $stash->{theme}{$theme}++;
+
     my $rec = {
       _id    => mongo_id(),
       id     => $id,
       theme  => $theme,
-      decade => $props->{decade} };
+      decade => "${decade}s"
+    };
 
     while ( my ( $ext, $file ) = each %$obj ) {
       my $key = $ext2key{$ext} // die;
@@ -141,24 +138,18 @@ sub process_props {
   say '  ', join ', ', map { "$_ = $by_kind{$_}" } sort keys %by_kind;
 }
 
+sub parse_id {
+  my $id = shift;
+  die "Can't parse $id"
+   unless $id =~ /^(\d\d\d\d)\d*_(\w+?)_/;
+  return ( $1, $2 );
+}
+
 sub asset_kind {
   my $obj = shift;
   return 'audio' if exists $obj->{mp3} || exists $obj->{ogg};
   return 'video' if exists $obj->{mp4} || exists $obj->{ogv};
   return 'images';
-}
-
-sub read_props {
-  my ($propfile) = @_;
-  my $props = {};
-  open my $fh, '<', $propfile;
-  while (<$fh>) {
-    chomp;
-    next if /^\s*#/ || /^\s*$/;
-    die "Bad properties" unless /^(\w+(?:\.\w+)*)[=:](.+)/;
-    $props->{$1} = $2;
-  }
-  return $props;
 }
 
 sub mongo_id { { '$oid' => mongo_uuid() } }
@@ -176,4 +167,3 @@ sub link_file {
 }
 
 # vim:ts=2:sw=2:sts=2:et:ft=perl
-
