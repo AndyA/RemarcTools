@@ -79,11 +79,13 @@ while ( my ( $col, $recs ) = each %$stash ) {
 # Show stats
 for my $key ( sort keys %stats ) {
   say "$key:";
-  my $info = $stats{$key};
+  my $info  = $stats{$key};
+  my $total = 0;
   for my $kv ( sort { $info->{$a} <=> $info->{$b} } keys %$info ) {
     printf "%8d : %s\n", $info->{$kv}, $kv;
+    $total += $info->{$kv};
   }
-  say "";
+  printf "%8d : %s\n\n", $total, "TOTAL";
 }
 
 while ( my ( $col, $recs ) = each %$stash ) {
