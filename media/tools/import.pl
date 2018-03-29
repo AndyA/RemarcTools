@@ -41,7 +41,17 @@ for my $dir (@ARGV) {
   process_dir( $stash, $dir );
 }
 
+for my $key ( 'theme', 'decade' ) {
+  say "$key:";
+  my $stats = $stash->{$key};
+  for my $val ( sort { $stats->{$a} <=> $stats->{$b} } keys %$stats ) {
+    printf "%5d %s\n", $stats->{$val}, $val;
+  }
+}
+
 fix_themes($stash);
+
+delete $stash->{decade};
 
 while ( my ( $col, $recs ) = each %$stash ) {
   my $dbfile = file $O{database}, "$col.json";
@@ -53,7 +63,7 @@ sub fix_themes {
   my ($stash) = @_;
   my @themes;
   my @names = map { $_ // 'Unused' }
-   ( sort keys %{ delete $stash->{theme} } )[0 .. THEMES - 1];
+   ( sort keys %{ $stash->{theme} } )[0 .. THEMES - 1];
 
   for my $theme (@names) {
     push @themes,
@@ -91,6 +101,8 @@ sub process_dir {
     ogv  => 'ogvContentUrl',
   );
 
+  my %theme_map = ( TV => "TV and Radio" );
+
   my @obj = dir($dir)->children;
 
   my %found = ();
@@ -110,11 +122,12 @@ sub process_dir {
     my $obj  = $found{$id};
     my $kind = asset_kind($obj);
     $by_kind{$kind}++;
-    my ( $year, $theme ) = parse_id($id);
+    my ( $year, $tag ) = parse_id($id);
     my $decade = 10 * int( $year / 10 );
-    # Bodge: app doesn't escape ampersand.
-    $theme =~ s/ & / and /g;
+    my $theme = $theme_map{$tag} // $tag;
+
     $stash->{theme}{$theme}++;
+    $stash->{decade}{$decade}++;
 
     my $rec = {
       _id    => mongo_id(),
