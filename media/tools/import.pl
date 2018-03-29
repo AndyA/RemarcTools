@@ -20,6 +20,7 @@ Options:
     -o, --output=dir    Output media to <dir>
     -d, --database=dir  Output db dump to <dir>
     -p, --prefix=url    URL prefix for resources
+    -m, --merge=dir     Merge db files from <dir> into output
 EOT
 
 my %O = (
@@ -27,6 +28,7 @@ my %O = (
   output   => 'datacontent',
   database => 'db',
   prefix   => '/remarc_resources/content',
+  merge    => [],
 );
 
 GetOptions(
@@ -34,36 +36,70 @@ GetOptions(
   'o|output:s'   => \$O{output},
   'd|database:s' => \$O{database},
   'p|prefix:s'   => \$O{prefix},
+  'm|merge:s'    => $O{merge},
 ) or die USAGE;
 
-my $stash = {};
+my $stash = {
+  audio  => [],
+  video  => [],
+  images => [],
+};
+
+# Read, merge any old data
+while ( my ( $col, $recs ) = each %$stash ) {
+  my $base = "$col.json";
+
+  for my $merge ( @{ $O{merge} } ) {
+    my $dbsrc = file $merge, $base;
+    next unless -e $dbsrc;
+    say "Reading $dbsrc";
+    push @$recs, @{ load_mongo($dbsrc) };
+  }
+}
+
+# Find new data
 for my $dir (@ARGV) {
   process_dir( $stash, $dir );
 }
 
-for my $key ( 'theme', 'decade' ) {
-  say "$key:";
-  my $stats = $stash->{$key};
-  for my $val ( sort { $stats->{$a} <=> $stats->{$b} } keys %$stats ) {
-    printf "%5d %s\n", $stats->{$val}, $val;
+# Survey
+my %stats = ();
+while ( my ( $col, $recs ) = each %$stash ) {
+  for my $rec (@$recs) {
+    for my $key ( 'decade', 'theme' ) {
+      my $kv = $rec->{$key};
+      $stats{$key}{$kv}++;
+    }
   }
 }
 
-fix_themes($stash);
-
-delete $stash->{decade};
+# Show stats
+for my $key ( sort keys %stats ) {
+  say "$key:";
+  my $info = $stats{$key};
+  for my $kv ( sort { $info->{$a} <=> $info->{$b} } keys %$info ) {
+    printf "%8d : %s\n", $info->{$kv}, $kv;
+  }
+  say "";
+}
 
 while ( my ( $col, $recs ) = each %$stash ) {
-  my $dbfile = file $O{database}, "$col.json";
+  my $base = "$col.json";
+  my $dbfile = file $O{database}, $base;
+
   say "Writing $dbfile";
   save_mongo( $dbfile, $recs );
 }
 
-sub fix_themes {
-  my ($stash) = @_;
+my $dbfile = file $O{database}, "theme.json";
+say "Writing $dbfile";
+save_mongo( $dbfile, make_themes( $stats{theme} ) );
+
+sub make_themes {
+  my $stats = shift;
   my @themes;
-  my @names = map { $_ // 'Unused' }
-   ( sort keys %{ $stash->{theme} } )[0 .. THEMES - 1];
+  my @names
+   = map { $_ // 'Unused' } ( sort keys %$stats )[0 .. THEMES - 1];
 
   for my $theme (@names) {
     push @themes,
@@ -71,19 +107,8 @@ sub fix_themes {
       name => $theme
      };
   }
-  $stash->{theme} = \@themes;
-  return $stash;
-}
 
-sub save_mongo {
-  my ( $file, $recs ) = @_;
-  my $outf = file $file;
-  $outf->parent->mkpath;
-  my $fh   = $outf->openw;
-  my $json = JSON->new->canonical;
-  for my $rec (@$recs) {
-    print $fh $json->encode($rec), "\n";
-  }
+  return \@themes;
 }
 
 sub process_dir {
@@ -101,7 +126,10 @@ sub process_dir {
     ogv  => 'ogvContentUrl',
   );
 
-  my %theme_map = ( TV => "TV and Radio" );
+  my %theme_map = (
+    TV      => "TV and Radio",
+    Lesiure => "Leisure",
+  );
 
   my @obj = dir($dir)->children;
 
@@ -126,8 +154,7 @@ sub process_dir {
     my $decade = 10 * int( $year / 10 );
     my $theme = $theme_map{$tag} // $tag;
 
-    $stash->{theme}{$theme}++;
-    $stash->{decade}{$decade}++;
+    #    $stash->{theme}{$theme}++;
 
     my $rec = {
       _id    => mongo_id(),
@@ -163,6 +190,28 @@ sub asset_kind {
   return 'audio' if exists $obj->{mp3} || exists $obj->{ogg};
   return 'video' if exists $obj->{mp4} || exists $obj->{ogv};
   return 'images';
+}
+
+sub load_mongo {
+  my $fh   = file( $_[0] )->openr;
+  my $json = JSON->new;
+  my @out  = ();
+  while (<$fh>) {
+    my $rec = $json->decode($_);
+    push @out, $rec;
+  }
+  return \@out;
+}
+
+sub save_mongo {
+  my ( $file, $recs ) = @_;
+  my $outf = file $file;
+  $outf->parent->mkpath;
+  my $fh   = $outf->openw;
+  my $json = JSON->new->canonical;
+  for my $rec (@$recs) {
+    print $fh $json->encode($rec), "\n";
+  }
 }
 
 sub mongo_id { { '$oid' => mongo_uuid() } }
