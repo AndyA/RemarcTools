@@ -150,8 +150,6 @@ sub process_mp4 {
   my $width    = mi_num( $info, "$vid/Width" );
   my $height   = mi_num( $info, "$vid/Height" );
   my $duration = mi_num( $info, "$vid/Duration" );
-  my $dar      = mi_num( $info, "$vid/Display_aspect_ratio" );
-  my $par      = mi_num( $info, "$vid/Pixel_aspect_ratio" );
 
   my @wm = watermark( $watermark, $width, $height );
 
