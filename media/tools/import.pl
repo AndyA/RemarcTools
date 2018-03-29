@@ -9,8 +9,11 @@ use warnings;
 use Getopt::Long;
 use JSON;
 use Path::Class;
+use List::Util qw( min max );
 
-use constant THEMES => 10;
+use constant THEMES     => 10;
+use constant MIN_DECADE => 1930;
+use constant MAX_DECADE => 2000;
 
 use constant USAGE => <<EOT;
 Syntax: $0 [options] <dir> ...
@@ -151,7 +154,8 @@ sub process_dir {
     my $kind = asset_kind($obj);
     $by_kind{$kind}++;
     my ( $year, $tag ) = parse_id($id);
-    my $decade = 10 * int( $year / 10 );
+    my $decade
+     = min( max( MIN_DECADE, 10 * int( $year / 10 ) ), MAX_DECADE );
     my $theme = $theme_map{$tag} // $tag;
 
     #    $stash->{theme}{$theme}++;
